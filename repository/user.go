@@ -13,6 +13,7 @@ func NewUser(u User) *model.User {
 	return &model.User{
 		ID:   u.ID,
 		Name: u.Name,
+		// Uncomment for the tests to pass.
 		//Age:  u.Age,
 	}
 }
