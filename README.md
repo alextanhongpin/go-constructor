@@ -23,8 +23,10 @@ Struct
 package main
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -49,77 +51,69 @@ func ToDBUser(u User) *DBUser {
 }
 
 func main() {
-	u := User{Name: "John", age: 1, Married: nil}
+	t := false
+	u := User{Name: "John", age: 1, Married: &t}
 	dbu := ToDBUser(u)
-	mustMap(u, dbu)
+	panic(mustMap(u, dbu))
 }
 
-func getTagMap(s interface{}) map[string]bool {
+func getStructTagFields(s interface{}, tag string) (string, map[string]bool) {
 	m := make(map[string]bool)
 	v := reflect.Indirect(reflect.ValueOf(s))
 	n := v.NumField()
 	for i := 0; i < n; i++ {
 		t := v.Type().Field(i)
 		f := v.Field(i)
-		tag := t.Tag.Get("map")
-		m[tag] = !f.IsZero()
+		k := t.Tag.Get(tag)
+		m[k] = !f.IsZero()
 	}
-	return m
+	return v.Type().Name(), m
 }
 
-func mustMap(a, b interface{}) {
-	lhsName := reflect.Indirect(reflect.ValueOf(a)).Type().Name()
-	rhsName := reflect.Indirect(reflect.ValueOf(b)).Type().Name()
-	lhs := getTagMap(a)
-	rhs := getTagMap(b)
-	if len(lhs) > len(rhs) {
-		var fields []string
-		for k := range lhs {
-			_, ok := rhs[k]
-			if !ok {
-				fields = append(fields, k)
-			}
-		}
-		panic(
-			fmt.Errorf("mapErr: missing fields %s<%s>",
-				rhsName, strings.Join(fields, ", "),
-			),
-		)
-	} else if len(lhs) == len(rhs) {
-		var lhsFields, rhsFields []string
-		for k, v := range lhs {
-			if !v {
-				lhsFields = append(lhsFields, k)
-			}
-			if !rhs[k] {
-				rhsFields = append(rhsFields, k)
-			}
-		}
-		if len(lhsFields) == 0 && len(rhsFields) == 0 {
-			return
-		}
-		if len(lhsFields) == 0 {
-			panic(
-				fmt.Errorf("mapErr: fields not set fields for %s<%s>",
-					rhsName, strings.Join(rhsFields, ", "),
-				),
-			)
-		} else if len(rhsFields) == 0 {
-			panic(
-				fmt.Errorf("mapErr: fields not set fields for %s<%s>",
-					lhsName, strings.Join(lhsFields, ", "),
-				),
-			)
-		} else {
-			panic(
-				fmt.Errorf("mapErr: fields not set fields for %s<%s> and %s<%s>",
-					lhsName, strings.Join(lhsFields, ", "),
-					rhsName, strings.Join(rhsFields, ", "),
-				),
-			)
-		}
-	} else {
-		mustMap(b, a)
+func mustMap(a, b interface{}) error {
+	lhsName, lhs := getStructTagFields(a, "map")
+	rhsName, rhs := getStructTagFields(b, "map")
+
+	all := make(map[string]bool)
+	for k := range lhs {
+		all[k] = true
 	}
+	for k := range rhs {
+		all[k] = true
+	}
+	if len(all) == 0 {
+		return errors.New("mapErr: no fields to map")
+	}
+
+	var lhsFields, rhsFields []string
+	for k := range all {
+		if !rhs[k] {
+			lhsFields = append(lhsFields, k)
+		}
+		if !lhs[k] {
+			rhsFields = append(rhsFields, k)
+		}
+	}
+	if len(lhsFields) == 0 && len(rhsFields) == 0 {
+		return nil
+	}
+
+	sort.Strings(lhsFields)
+	sort.Strings(rhsFields)
+
+	if len(lhsFields) == 0 {
+		return fmt.Errorf("mapErr: fields not mapped for %s<%s>",
+			rhsName, strings.Join(rhsFields, ", "),
+		)
+	} else if len(rhsFields) == 0 {
+		return fmt.Errorf("mapErr: fields not mapped for %s<%s>",
+			lhsName, strings.Join(lhsFields, ", "),
+		)
+	}
+
+	return fmt.Errorf("mapErr: fields not mapped for %s<%s> and %s<%s>",
+		lhsName, strings.Join(lhsFields, ", "),
+		rhsName, strings.Join(rhsFields, ", "),
+	)
 }
 ```
